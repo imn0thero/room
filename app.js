@@ -10,6 +10,12 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+// Admin credentials
+const ADMIN_CREDENTIALS = {
+    username: 'Azz',
+    password: '#02Maulana'
+};
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -51,7 +57,8 @@ const upload = multer({
 // Data storage
 let users = [];
 let messages = [];
-let onlineUsers = new Map(); // socketId -> {username, room}
+let blockedUsers = []; // Array untuk menyimpan username yang diblokir
+let onlineUsers = new Map(); // socketId -> {username, room, isAdmin}
 let roomUsers = new Map(); // room -> Set of usernames
 let typingUsers = new Map(); // room -> Set of usernames
 
@@ -71,6 +78,9 @@ function loadData() {
         if (fs.existsSync('messages.json')) {
             messages = JSON.parse(fs.readFileSync('messages.json', 'utf8'));
         }
+        if (fs.existsSync('blockedUsers.json')) {
+            blockedUsers = JSON.parse(fs.readFileSync('blockedUsers.json', 'utf8'));
+        }
     } catch (error) {
         console.error('Error loading data:', error);
     }
@@ -81,8 +91,50 @@ function saveData() {
     try {
         fs.writeFileSync('users.json', JSON.stringify(users, null, 2));
         fs.writeFileSync('messages.json', JSON.stringify(messages, null, 2));
+        fs.writeFileSync('blockedUsers.json', JSON.stringify(blockedUsers, null, 2));
     } catch (error) {
         console.error('Error saving data:', error);
+    }
+}
+
+// Helper functions
+function isAdmin(username) {
+    return username === ADMIN_CREDENTIALS.username;
+}
+
+function isUserBlocked(username) {
+    return blockedUsers.includes(username);
+}
+
+function blockUser(username) {
+    if (!blockedUsers.includes(username) && !isAdmin(username)) {
+        blockedUsers.push(username);
+        saveData();
+        return true;
+    }
+    return false;
+}
+
+function unblockUser(username) {
+    const index = blockedUsers.indexOf(username);
+    if (index > -1) {
+        blockedUsers.splice(index, 1);
+        saveData();
+        return true;
+    }
+    return false;
+}
+
+function disconnectBlockedUser(username) {
+    // Disconnect semua socket dari user yang diblokir
+    for (let [socketId, userData] of onlineUsers) {
+        if (userData.username === username) {
+            const socket = io.sockets.sockets.get(socketId);
+            if (socket) {
+                socket.emit('user-blocked', { message: 'You have been blocked by admin' });
+                socket.disconnect(true);
+            }
+        }
     }
 }
 
@@ -106,6 +158,11 @@ app.post('/api/signup', (req, res) => {
         return res.status(400).json({ error: 'Username and password required' });
     }
     
+    // Cek apakah username adalah admin
+    if (username === ADMIN_CREDENTIALS.username) {
+        return res.status(400).json({ error: 'Username not available' });
+    }
+    
     if (users.find(user => user.username === username)) {
         return res.status(400).json({ error: 'Username already exists' });
     }
@@ -126,13 +183,37 @@ app.post('/api/signup', (req, res) => {
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     
+    // Cek admin login
+    if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
+        return res.json({ 
+            success: true, 
+            user: { 
+                id: 'Azz', 
+                username: username,
+                isAdmin: true 
+            } 
+        });
+    }
+    
+    // Cek apakah user diblokir
+    if (isUserBlocked(username)) {
+        return res.status(403).json({ error: 'Your account has been blocked' });
+    }
+    
     const user = users.find(u => u.username === username && u.password === password);
     
     if (!user) {
         return res.status(400).json({ error: 'Invalid username or password' });
     }
     
-    res.json({ success: true, user: { id: user.id, username: user.username } });
+    res.json({ 
+        success: true, 
+        user: { 
+            id: user.id, 
+            username: user.username,
+            isAdmin: false 
+        } 
+    });
 });
 
 app.post('/api/upload', upload.single('file'), (req, res) => {
@@ -154,12 +235,33 @@ app.get('/api/messages/:room', (req, res) => {
     res.json(roomMessages);
 });
 
+// Admin API Routes
+app.get('/api/admin/blocked-users', (req, res) => {
+    res.json(blockedUsers);
+});
+
+app.get('/api/admin/all-users', (req, res) => {
+    const allUsers = users.map(user => ({
+        username: user.username,
+        createdAt: user.createdAt,
+        isBlocked: isUserBlocked(user.username)
+    }));
+    res.json(allUsers);
+});
+
 // Socket.IO
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     
     socket.on('join-room', (data) => {
-        const { username, room } = data;
+        const { username, room, isAdmin } = data;
+        
+        // Cek apakah user diblokir
+        if (isUserBlocked(username) && !isAdmin) {
+            socket.emit('user-blocked', { message: 'Your account has been blocked' });
+            socket.disconnect(true);
+            return;
+        }
         
         // Check room capacity
         if (roomUsers.get(room).size >= 100) {
@@ -187,7 +289,7 @@ io.on('connection', (socket) => {
         
         // Join new room
         socket.join(room);
-        onlineUsers.set(socket.id, { username, room });
+        onlineUsers.set(socket.id, { username, room, isAdmin: isAdmin || false });
         roomUsers.get(room).add(username);
         
         // Send room messages to user
@@ -197,11 +299,15 @@ io.on('connection', (socket) => {
         // Notify room about new user
         socket.to(room).emit('user-joined', {
             username,
-            userCount: roomUsers.get(room).size
+            userCount: roomUsers.get(room).size,
+            isAdmin: isAdmin || false
         });
         
         // Send current user count to the joining user
         socket.emit('user-count', roomUsers.get(room).size);
+        
+        // Send admin status to user
+        socket.emit('admin-status', { isAdmin: isAdmin || false });
         
         console.log(`${username} joined ${room}`);
     });
@@ -210,6 +316,13 @@ io.on('connection', (socket) => {
         const userData = onlineUsers.get(socket.id);
         if (!userData) return;
         
+        // Cek apakah user diblokir
+        if (isUserBlocked(userData.username) && !userData.isAdmin) {
+            socket.emit('user-blocked', { message: 'Your account has been blocked' });
+            socket.disconnect(true);
+            return;
+        }
+        
         const message = {
             id: Date.now().toString(),
             username: userData.username,
@@ -217,7 +330,8 @@ io.on('connection', (socket) => {
             content: data.content,
             type: data.type || 'text',
             file: data.file || null,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            isAdmin: userData.isAdmin || false
         };
         
         messages.push(message);
@@ -230,6 +344,11 @@ io.on('connection', (socket) => {
     socket.on('typing', () => {
         const userData = onlineUsers.get(socket.id);
         if (!userData) return;
+        
+        // Cek apakah user diblokir
+        if (isUserBlocked(userData.username) && !userData.isAdmin) {
+            return;
+        }
         
         typingUsers.get(userData.room).add(userData.username);
         socket.to(userData.room).emit('typing-update', {
@@ -245,6 +364,127 @@ io.on('connection', (socket) => {
         socket.to(userData.room).emit('typing-update', {
             typingUsers: Array.from(typingUsers.get(userData.room))
         });
+    });
+    
+    // Admin Events
+    socket.on('admin-block-user', (data) => {
+        const userData = onlineUsers.get(socket.id);
+        if (!userData || !userData.isAdmin) {
+            socket.emit('error', { message: 'Unauthorized' });
+            return;
+        }
+        
+        const { username } = data;
+        if (blockUser(username)) {
+            // Disconnect user yang diblokir
+            disconnectBlockedUser(username);
+            
+            // Broadcast ke semua admin
+            io.emit('user-blocked-update', { 
+                username, 
+                action: 'blocked',
+                blockedBy: userData.username 
+            });
+            
+            socket.emit('admin-action-success', { 
+                message: `User ${username} has been blocked` 
+            });
+        } else {
+            socket.emit('error', { 
+                message: 'Failed to block user or user is already blocked' 
+            });
+        }
+    });
+    
+    socket.on('admin-unblock-user', (data) => {
+        const userData = onlineUsers.get(socket.id);
+        if (!userData || !userData.isAdmin) {
+            socket.emit('error', { message: 'Unauthorized' });
+            return;
+        }
+        
+        const { username } = data;
+        if (unblockUser(username)) {
+            // Broadcast ke semua admin
+            io.emit('user-blocked-update', { 
+                username, 
+                action: 'unblocked',
+                unblockedBy: userData.username 
+            });
+            
+            socket.emit('admin-action-success', { 
+                message: `User ${username} has been unblocked` 
+            });
+        } else {
+            socket.emit('error', { 
+                message: 'Failed to unblock user' 
+            });
+        }
+    });
+    
+    socket.on('admin-clear-messages', (data) => {
+        const userData = onlineUsers.get(socket.id);
+        if (!userData || !userData.isAdmin) {
+            socket.emit('error', { message: 'Unauthorized' });
+            return;
+        }
+        
+        const { room } = data;
+        
+        // Hapus semua pesan dari room tertentu
+        const initialLength = messages.length;
+        messages = messages.filter(msg => msg.room !== room);
+        const deletedCount = initialLength - messages.length;
+        
+        saveData();
+        
+        // Broadcast ke semua user di room tersebut
+        io.to(room).emit('messages-cleared', { 
+            clearedBy: userData.username,
+            room: room 
+        });
+        
+        socket.emit('admin-action-success', { 
+            message: `${deletedCount} messages cleared from ${room}` 
+        });
+    });
+    
+    socket.on('admin-clear-all-messages', () => {
+        const userData = onlineUsers.get(socket.id);
+        if (!userData || !userData.isAdmin) {
+            socket.emit('error', { message: 'Unauthorized' });
+            return;
+        }
+        
+        const deletedCount = messages.length;
+        messages = [];
+        saveData();
+        
+        // Broadcast ke semua user
+        io.emit('all-messages-cleared', { 
+            clearedBy: userData.username 
+        });
+        
+        socket.emit('admin-action-success', { 
+            message: `All ${deletedCount} messages have been cleared` 
+        });
+    });
+    
+    socket.on('admin-get-online-users', () => {
+        const userData = onlineUsers.get(socket.id);
+        if (!userData || !userData.isAdmin) {
+            socket.emit('error', { message: 'Unauthorized' });
+            return;
+        }
+        
+        const onlineUsersList = Array.from(onlineUsers.values()).map(user => ({
+            username: user.username,
+            room: user.room,
+            isAdmin: user.isAdmin,
+            isBlocked: isUserBlocked(user.username)
+        }));
+        
+        socket.emit('online-users-list', onlineUsersList);
     });
     
     socket.on('disconnect', () => {
@@ -271,9 +511,10 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 80;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Admin credentials - Username: ${ADMIN_CREDENTIALS.username}, Password: ${ADMIN_CREDENTIALS.password}`);
 });
 
 // Save data periodically
