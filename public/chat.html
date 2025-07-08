@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ChatZone - Chat Room</title>
+    <title>SalingSapa - Chat Room</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -784,32 +784,32 @@
                             <span id="userNameText"></span>
                             <span id="adminBadge" class="admin-badge" style="display: none;">ADMIN</span>
                         </div>
-                        <button class="logout-btn" id="logoutBtn">🚪 Keluar</button>
+                        <button class="logout-btn" id="logoutBtn">➥ Keluar</button>
                     </div>
                 </div>
             </div>
 
             <div class="rooms-section">
-                <div class="section-title">🏠 Pilih Room</div>
+                <div class="section-title">𓉞 Pilih Room</div>
                 <div class="room-list" id="roomList">
                     <div class="room-item" data-room="Room 1">
-                        <div class="room-name">🎮 Gaming Zone</div>
+                        <div class="room-name">모 Gaming Zone</div>
                         <div class="room-users">0 online</div>
                     </div>
                     <div class="room-item" data-room="Room 2">
-                        <div class="room-name">🎵 Music Lovers</div>
+                        <div class="room-name">♫ Music Lovers</div>
                         <div class="room-users">0 online</div>
                     </div>
                     <div class="room-item" data-room="Room 3">
-                        <div class="room-name">📚 Study Group</div>
+                        <div class="room-name">✎ Study Group</div>
                         <div class="room-users">0 online</div>
                     </div>
                     <div class="room-item" data-room="Room 4">
-                        <div class="room-name">🎬 Movie Talk</div>
+                        <div class="room-name">[▸] Movie Talk</div>
                         <div class="room-users">0 online</div>
                     </div>
                     <div class="room-item" data-room="Room 5">
-                        <div class="room-name">💬 Random Chat</div>
+                        <div class="room-name">☕︎ Random Chat</div>
                         <div class="room-users">0 online</div>
                     </div>
                 </div>
@@ -826,13 +826,13 @@
         <div class="main-chat">
             <div class="chat-header">
                 <div class="current-room" id="currentRoom">Pilih room untuk mulai chat</div>
-                <div class="room-info" id="roomInfo">Selamat datang di ChatZone!</div>
+                <div class="room-info" id="roomInfo">Selamat datang di SalingSapa!</div>
             </div>
 
             <div class="messages-container" id="messagesContainer">
                 <div style="text-align: center; color: rgba(255,255,255,0.7); margin-top: 50px;">
-                    <div style="font-size: 2.5rem; margin-bottom: 15px;">💬</div>
-                    <div style="font-size: 1rem; margin-bottom: 8px;">Selamat datang di ChatZone!</div>
+                    <div style="font-size: 2.5rem; margin-bottom: 15px;">☕︎</div>
+                    <div style="font-size: 1rem; margin-bottom: 8px;">Selamat datang di SalingSapa!</div>
                     <div style="font-size: 0.85rem;">Pilih room di sidebar untuk mulai chatting</div>
                 </div>
             </div>
@@ -841,10 +841,10 @@
 
             <div class="input-container">
                 <div class="input-wrapper">
-                    <button class="input-btn" id="fileBtn" title="Kirim File">📎</button>
-                    <button class="input-btn" id="voiceBtn" title="Voice Note">🎤</button>
+                    <button class="input-btn" id="fileBtn" title="Kirim File">⎙</button>
+                    <button class="input-btn" id="voiceBtn" title="Voice Note">၊၊||၊</button>
                     <input type="text" class="message-input" id="messageInput" placeholder="Ketik pesan...">
-                    <button class="input-btn send-btn" id="sendBtn" title="Kirim">🚀</button>
+                    <button class="input-btn send-btn" id="sendBtn" title="Kirim">⌯⌲</button>
                 </div>
                 <input type="file" class="file-input" id="fileInput" accept="image/*,video/*,audio/*,.pdf,.doc,.docx">
             </div>
@@ -1192,7 +1192,7 @@
                     mediaRecorder.start();
                     isRecording = true;
                     voiceBtn.classList.add('recording');
-                    voiceBtn.textContent = '⏹️';
+                    voiceBtn.textContent = '𓊕';
                 } catch (error) {
                     alert('Tidak bisa mengakses mikrofon');
                 }
